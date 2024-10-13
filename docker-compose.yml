@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-postgres-common: &postgres-common
   image: postgres:14-alpine
   user: postgres
@@ -33,8 +31,7 @@ services:
       - postgres_primary_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/00_init.sql
       - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
-      - ./insert_sample_data.sql:/docker-entrypoint-initdb.d/02_insert_sample_data.sql
-      - ./create_views.sql:/docker-entrypoint-initdb.d/03_create_views.sql
+      - ./create_views.sql:/docker-entrypoint-initdb.d/02_create_views.sql
 
   db_replica:
     <<: *postgres-common
