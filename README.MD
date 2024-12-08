@@ -1,39 +1,133 @@
 # Система бронирования авиабилетов с репликацией PostgreSQL
 
-Этот проект представляет собой систему бронирования авиабилетов, использующую PostgreSQL с настроенной репликацией, работающую в Docker.
+Этот проект представляет собой систему бронирования авиабилетов, использующую PostgreSQL с настроенной репликацией, хранилищем данных (DWH) и системой CDC, работающую в Docker.
 
 ## Структура проекта
 
-- `docker-compose.yml`: Конфигурация Docker Compose для запуска первичного и реплицируемого экземпляров PostgreSQL.
-- `init.sql`: SQL-скрипт для инициализации репликации.
-- `schema.sql`: SQL-скрипт для создания структуры базы данных.
-- `create_views.sql`: SQL-скрипт для создания представления статистики аэропортов.
-
-## Предварительные требования
-
-- Docker
-- Docker Compose
+- `docker-compose.yml`: Конфигурация Docker Compose для всех сервисов
+- `init.sql`: SQL-скрипт для инициализации репликации
+- `schema.sql`: SQL-скрипт для создания структуры базы данных
+- `create_views.sql`: SQL-скрипт для создания представления статистики аэропортов
+- `dwh_schema.sql`: SQL-скрипт для создания структуры хранилища данных
+- `connector.json`: Конфигурация Debezium коннектора
+- `dmp_service.py`: Сервис обработки данных для DWH
+- `requirements.txt`: Зависимости Python для DMP сервиса
 
 ## Установка и запуск
 
-1. Клонируйте репозиторий:
-   ```
-   git clone <url-репозитория>
-   cd <директория-проекта>
-   ```
+### Шаги установки
 
-2. Убедитесь, что все необходимые файлы находятся в одной директории:
-   - `docker-compose.yml`
-   - `init.sql`
-   - `schema.sql`
-   - `create_views.sql`
+1. Клонировать репозиторий:
+```bash
+git clone <repository-url>
+cd <repository-name>
+```
 
-3. Запустите систему с помощью одной команды:
-   ```
-   docker-compose up -d
-   ```
+2. Запустить все сервисы:
+```bash
+docker-compose up -d
+```
 
-   Эта команда запустит первичный и реплицируемый экземпляры PostgreSQL, создаст структуру базы данных, и создаст представление для статистики аэропортов.
+3. Дождаться полной инициализации (обычно 1-2 минуты). Все компоненты системы запустятся автоматически:
+   - PostgreSQL Primary DB
+   - PostgreSQL Replica DB
+   - PostgreSQL DWH
+   - Zookeeper
+   - Kafka
+   - Debezium с автоматической настройкой коннектора
+   - DMP сервис
+
+### Проверка работоспособности
+
+1. Проверка статуса баз данных:
+```bash
+# Primary DB
+psql -h localhost -p 5432 -U admin -d airline_tickets -c "SELECT version();"
+
+# Replica DB
+psql -h localhost -p 5433 -U admin -d airline_tickets -c "SELECT version();"
+
+# DWH
+psql -h localhost -p 5434 -U admin -d airline_tickets_dwh -c "SELECT version();"
+```
+
+2. Проверка репликации:
+```bash
+# На Primary DB
+psql -h localhost -p 5432 -U admin -d airline_tickets -c "INSERT INTO airports VALUES ('XXX', 'Test Airport', 'Test City', 0, 0, 'UTC');"
+
+# На Replica DB (должна появиться новая запись)
+psql -h localhost -p 5433 -U admin -d airline_tickets -c "SELECT * FROM airports WHERE airport_code = 'XXX';"
+```
+
+3. Проверка CDC и DWH:
+```bash
+# Проверка топиков Kafka
+docker exec -it kafka kafka-topics --list --bootstrap-server localhost:9092
+
+# Проверка данных в DWH
+psql -h localhost -p 5434 -U admin -d airline_tickets_dwh -c "SELECT * FROM dwh_detailed.hub_airports;"
+```
+
+4. Проверка представления статистики:
+```bash
+# На Primary DB
+psql -h localhost -p 5432 -U admin -d airline_tickets -c "SELECT * FROM airport_traffic;"
+
+# На Replica DB (результаты должны совпадать)
+psql -h localhost -p 5433 -U admin -d airline_tickets -c "SELECT * FROM airport_traffic;"
+```
+
+### Доступы к сервисам
+
+1. База данных (Primary и Replica):
+   - Пользователь: admin
+   - Пароль: adminpassword
+   - База данных: airline_tickets
+
+2. Хранилище данных (DWH):
+   - Пользователь: admin
+   - Пароль: adminpassword
+   - База данных: airline_tickets_dwh
+
+3. Kafka:
+   - Порт: 9092
+   - Bootstrap сервер: localhost:9092
+
+4. Debezium:
+   - REST API: http://localhost:8083
+   - Топики: airline.public.*
+
+### Мониторинг
+
+1. Логи сервисов:
+```bash
+# Логи DMP сервиса
+docker logs dmp_service
+
+# Логи Debezium
+docker logs debezium
+
+# Логи Primary DB
+docker logs postgres_primary
+```
+
+2. Статус Debezium коннектора:
+```bash
+curl -X GET http://localhost:8083/connectors/airline-connector/status
+```
+
+### Остановка и очистка
+
+1. Остановка всех сервисов:
+```bash
+docker-compose down
+```
+
+2. Полная очистка (включая данные):
+```bash
+docker-compose down -v
+```
 
 ## Проверка работоспособности
 
@@ -57,7 +151,7 @@
    SELECT * FROM airport_traffic;
    ```
 
-   Результаты должны совпадать с результатами на первичном сервере.
+   Результа��ы должны совпадать с результатами на первичном сервере.
 
 ## Структура базы данных
 
@@ -102,7 +196,7 @@ airport_code | departure_flights_num | departure_psngr_num | arrival_flights_num
 
 1. **Историчность данных**: Data Vault 2.0 обеспечивает полное сохранение истории изменений данных, что критично для систем бронирования билетов.
 
-2. **Масштабируемость**: Архитектура легко расширяется при добавлении новых источников данных или изменении бизнес-требований.
+2. **Масштабируемость**: Архитектура легко расширяется ��ри добавлении новых источников данных или изменении бизнес-требований.
 
 3. **Аудит и отслеживание**: Встроенная поддержка метаданных и отслеживания происхождения данных позволяет точно определить источник и время каждого изменения.
 
@@ -134,7 +228,7 @@ ER-диаграмма структуры DWH доступна в файле `dwh
   - Обеспечивает масштабируемость и надежность доставки сообщений
 
 - **Zookeeper** (порт 2181)
-  - Координационный сервис для Kafka
+  - Координационный се��вис для Kafka
   - Управляет конфигурацией и состоянием кластера
 
 - **Debezium Connect** (порт 8083)
@@ -179,7 +273,7 @@ docker exec -it kafka kafka-topics --list --bootstrap-server localhost:9092
 ### Архитектура сервиса
 
 Сервис реализует следующую логику обработки данных:
-1. Подключение к Kafka и прослушивание топиков с изменениями
+1. Подключение к Kafka и просл��шивание топиков с изменениями
 2. Обработка сообщений о создании/обновлении/удалении записей
 3. Формирование хеш-ключей для Hub и Satellite таблиц
 4. Загрузка данных в соответствующие таблицы DWH
@@ -189,4 +283,4 @@ docker exec -it kafka kafka-topics --list --bootstrap-server localhost:9092
 Для каждой сущности реализована своя логика обработки:
 - Создание записи: добавление в Hub (если новая) и добавление в Satellite
 - Обновление записи: добавление новой версии в Satellite
-- Удаление: не удаляет данные физически (соблюдение принципа историчности)
+- Удаление: не удаляе�� данные физически (соблюдение принципа историчности)

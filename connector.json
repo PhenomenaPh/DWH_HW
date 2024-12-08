@@ -1,0 +1,16 @@
+{
+    "name": "airline-connector",
+    "config": {
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "tasks.max": "1",
+        "database.hostname": "db_primary",
+        "database.port": "5432",
+        "database.user": "admin",
+        "database.password": "adminpassword",
+        "database.dbname": "airline_tickets",
+        "database.server.name": "airline",
+        "topic.prefix": "airline",
+        "schema.include.list": "public",
+        "plugin.name": "pgoutput"
+    }
+} 
