@@ -143,7 +143,57 @@ services:
     environment:
       PYTHONUNBUFFERED: 1
 
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    ports:
+      - "8088:8088"
+    environment:
+      - SUPERSET_SECRET_KEY=your_secret_key_here
+      - SUPERSET_LOAD_EXAMPLES=no
+      - POSTGRES_DB=airline_tickets_dwh
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=adminpassword
+      - POSTGRES_HOST=db_dwh
+      - POSTGRES_PORT=5432
+    volumes:
+      - superset_home:/app/superset_home
+    depends_on:
+      - superset_init
+      - db_dwh
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  superset_init:
+    image: apache/superset:latest
+    container_name: superset_init
+    depends_on:
+      - db_dwh
+    command: |
+      bash -c '
+      superset db upgrade &&
+      superset fab create-admin \
+        --username admin \
+        --firstname Superset \
+        --lastname Admin \
+        --email admin@superset.com \
+        --password admin &&
+      superset init
+      '
+    environment:
+      - SUPERSET_SECRET_KEY=your_secret_key_here
+      - POSTGRES_DB=airline_tickets_dwh
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=adminpassword
+      - POSTGRES_HOST=db_dwh
+      - POSTGRES_PORT=5432
+
 volumes:
   postgres_primary_data:
   postgres_replica_data:
   postgres_dwh_data:
+  superset_home:
