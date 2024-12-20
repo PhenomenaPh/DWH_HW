@@ -1,0 +1,31 @@
+services:
+  airflow-postgres:
+    extends:
+      file: docker-compose.airflow.yml
+      service: airflow-postgres
+
+  airflow-webserver:
+    extends:
+      file: docker-compose.airflow.yml
+      service: airflow-webserver
+    depends_on:
+      - db_primary
+
+  airflow-scheduler:
+    extends:
+      file: docker-compose.airflow.yml
+      service: airflow-scheduler
+    depends_on:
+      - db_primary
+
+  airflow-init:
+    extends:
+      file: docker-compose.airflow.yml
+      service: airflow-init
+    depends_on:
+      - db_primary
+    profiles:
+      - init
+
+volumes:
+  airflow_postgres_data:
